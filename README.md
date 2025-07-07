@@ -1,5 +1,6 @@
 # Agentic Foodie 🍔
-![Alt text]([https://example.com/image.jpg](https://github.com/AmiraSayedMohamed/LablabHackathon-Voice-Powered-Restaurant-Ordering-Assistant/blob/master/appImage.jpg))
+![Alt text](https://example.com/image.jpg)
+
 
 A voice-powered restaurant ordering web application built with Streamlit, leveraging AI and real-time audio processing to provide a seamless and interactive dining experience. Users can place orders via voice or text, explore a dynamic menu, and receive personalized recommendations powered by Groq's Llama AI model.
 
