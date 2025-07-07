@@ -1,27 +1,15 @@
 import streamlit as st
 import requests
 import json
-import os
 import io
-import asyncio
-import threading
 import time
-from livekit.api import AccessToken
-from livekit.rtc import Room, RoomOptions
-from dotenv import load_dotenv
+from audio_recorder_streamlit import audio_recorder
 import speech_recognition as sr
 from pydub import AudioSegment
-from audio_recorder_streamlit import audio_recorder
 
 # --- Configuration ---
-# Load environment variables from .env file.
-# On Streamlit Cloud, these should be set as secrets.
-load_dotenv() 
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
-LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
-LIVEKIT_WS_URL = os.getenv("LIVEKIT_WS_URL")  # e.g., wss://your-project.livekit.cloud
+# Note: Streamlit Cloud uses environment variables set in the dashboard
+GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 LLAMA_MODEL = "llama3-8b-8192"
 
@@ -49,42 +37,6 @@ promotions = [
 ]
 
 flat_menu = {item_id: item for category_data in menu.values() for item_id, item in [(item["id"], item) for item in category_data]}
-
-# --- LiveKit Token Generator ---
-def generate_access_token(api_key, api_secret, room_name, identity):
-    try:
-        token = (
-            AccessToken(api_key, api_secret)
-            .with_identity(identity)
-            .with_grants(
-                {
-                    "room_join": True,
-                    "room": room_name,
-                    "can_publish": True,
-                    "can_subscribe": True,
-                }
-            )
-        )
-        return token.to_jwt()
-    except Exception as e:
-        st.error(f"Error generating token: {e}")
-        return None
-
-# --- LiveKit Setup ---
-# LiveKit room is not designed to persist across Streamlit reruns easily.
-# For demonstration purposes, we'll keep the basic connection,
-# but real-time bidirectional audio for an agent would typically involve a separate
-# backend service (e.g., LiveKit Agents framework, a dedicated websocket server)
-# due to Streamlit's stateless nature and limitations with long-lived connections.
-# The current LiveKit connection setup is more illustrative for one-off actions.
-
-# We'll use a placeholder for LiveKit room state, but truly streaming audio back
-# from LiveKit through Streamlit's server to the user's browser is complex.
-# This code focuses on transcription of user audio to LLM.
-
-# Removed direct LiveKit audio handling as it's not feasible for
-# a direct browser-to-LiveKit-to-Streamlit audio stream without a dedicated backend.
-# The current audio_recorder_streamlit is for client-side recording and uploading.
 
 # --- MCP with Mock Implementation ---
 class MCP:
@@ -117,10 +69,7 @@ def check_availability(item_id):
     available_items = {"beef_burger": 10, "margherita_pizza": 5}
     return available_items.get(item_id, 0) > 0
 
-# --- Fetch.ai Setup (Mocked for Streamlit Deployment) ---
-# The Fetch.ai integration relies on a local node or a specific setup not easily
-# transferable to a stateless Streamlit Cloud environment without significant backend work.
-# For deployment, we'll keep the agent structure but use a simplified, mocked version.
+# --- Fetch.ai Mock Setup ---
 class LedgerApi:
     def __init__(self, node):
         pass
@@ -128,20 +77,14 @@ class LedgerApi:
 class Entity:
     pass
 
-# Mocking Fetch.ai specific components
 ledger_api = LedgerApi('mock-node')
 entity = Entity()
 recommendation_agent = Agent(name="RecommendationAgent", mcp=mcp)
 
 @recommendation_agent.task
 def suggest_item(order):
-    # Simplified recommendation logic for demonstration
-    ordered_item_ids = [item["id"] for item in order]
-    if "beef_burger" in ordered_item_ids and "golden_fries" not in ordered_item_ids:
+    if "beef_burger" in [item["id"] for item in order]:
         return "golden_fries"
-    if any(category in ordered_item_ids for category in ["burgers", "pizza"]) and not any(item["id"] == "coke" or item["id"] == "lemonade" for item in order):
-        return "coke" # Suggest a drink if a main course is ordered
-    # Add more complex recommendations here based on your menu/promotions
     return None
 
 # --- Streamlit App Setup ---
@@ -162,7 +105,7 @@ st.markdown("""
         --foreground-rgb-r: 64; --foreground-rgb-g: 54; --foreground-rgb-b: 46;
     }
     .stApp { font-family: 'Inter', sans-serif; background-color: hsl(var(--background-hsl)); color: hsl(var(--foreground-hsl)); }
-    .hero-section { position: relative; height: 300px; background: linear-gradient(135deg, hsl(var(--primary-hsl)), hsl(var(--accent-hsl))), url('https://content.streamlit.io/v3/uploaded:image_d9d45d.jpg-28e75a55-fe11-4c1a-9b91-11f8fe316e18'); background-size: cover; background-position: center; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: white; border-radius: 1.5rem; box-shadow: 0 10px 20px rgba(var(--primary-rgb-r), var(--primary-rgb-g), var(--primary-rgb-b), 0.3); margin-bottom: 2rem; overflow: hidden; }
+    .hero-section { position: relative; height: 300px; background: linear-gradient(135deg, hsl(var(--primary-hsl)), hsl(var(--accent-hsl))); background-size: cover; background-position: center; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: white; border-radius: 1.5rem; box-shadow: 0 10px 20px rgba(var(--primary-rgb-r), var(--primary-rgb-g), var(--primary-rgb-b), 0.3); margin-bottom: 2rem; overflow: hidden; }
     .hero-section::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, rgba(var(--primary-rgb-r), var(--primary-rgb-g), var(--primary-rgb-b), 0.7), rgba(var(--accent-rgb-r), var(--accent-rgb-g), var(--accent-rgb-b), 0.7)); z-index: 1; }
     .hero-content { position: relative; z-index: 2; padding: 1rem; }
     .hero-title { font-family: 'Pacifico', cursive; font-size: 5rem; color: white; text-shadow: 3px 3px 6px rgba(0,0,0,0.5); margin-bottom: 0.5rem; line-height: 1; }
@@ -179,11 +122,11 @@ st.markdown("""
     .dot:nth-child(3) { animation-delay: 0.2s; }
     @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
     .chat-header { display: flex; align-items: center; justify-content: flex-start; margin: 0 !important; padding: 0 !important; }
-    .chat-history-container { height: 3px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin-top: -10px !important; padding-top: 0 !important; }
+    .chat-history-container { height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin-top: -10px !important; padding-top: 0 !important; }
     .chat-bubble { max-width: 75%; padding: 10px 15px; border-radius: 1rem; word-wrap: break-word; width: fit-content; box-sizing: border-box; }
     .user-bubble { background: linear-gradient(90deg, hsl(var(--primary-hsl)), hsl(var(--primary-glow-hsl))); color: white; align-self: flex-end; border-bottom-right-radius: 0.25rem; }
     .agent-bubble { background: linear-gradient(90deg, hsl(var(--secondary-hsl)), hsl(var(--secondary-hsl), 90%)); color: white; align-self: flex-start; border-bottom-left-radius: 0.25rem; }
-    .bot-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(45deg, hsl(var(--accent-hsl)), hsl(var(--accent-hsl), 70%)); display: flex; justify-content: center; align-items: center; font-size: 1.5rem; margin-right: 10px; flex-shrink: 0; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+    .bot-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(45deg, hsl(var(--accent-hsl)), hsl(var(--accent-hsl), 70%)); display: flex; justify-content: center; align- items: center; font-size: 1.5rem; margin-right: 10px; flex-shrink: 0; box-shadow: 0 2 Mendiumpx 5px rgba(0,0,0,0.2); }
     .chat-row { display: flex; align-items: flex-start; gap: 10px; }
     .chat-row.user { justify-content: flex-end; }
     .chat-row.agent { justify-content: flex-start; }
@@ -238,8 +181,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown(f"""
-    <div class="hero-section" style="background: linear-gradient(135deg, hsl(var(--primary-hsl)), hsl(var(--accent-hsl))), url('https://raw.githubusercontent.com/yourusername/yourrepo/main/cover.png'); background-size: cover; background-position: center;">
+st.markdown("""
+    <div class="hero-section">
         <div class="hero-content">
             <h1 class="hero-title">Agentic Foodie</h1>
             <p class="hero-subtitle">Voice-Powered Restaurant Ordering Assistant</p>
@@ -260,9 +203,6 @@ if 'is_processing_audio' not in st.session_state:
     st.session_state.is_processing_audio = False
 if 'is_llm_thinking' not in st.session_state:
     st.session_state.is_llm_thinking = False
-# Removed voice_session_started as direct LiveKit audio streaming is removed
-# if 'voice_session_started' not in st.session_state:
-#     st.session_state.voice_session_started = False
 if 'last_request_time' not in st.session_state:
     st.session_state.last_request_time = 0
 if 'rate_limit_warning' not in st.session_state:
@@ -316,40 +256,22 @@ def process_user_input(user_input_text):
     if user_input_text:
         add_message_to_chat(user_input_text, "user")
         st.session_state.is_llm_thinking = True
-        # Explicitly pass current_order to LLM for context
         llm_result = get_llm_response(user_input_text, st.session_state.current_order, st.session_state.conversation_history)
         agent_response = llm_result["response_text"]
         add_message_to_chat(agent_response, "agent")
-        # Removed speak_text as Groq does not support TTS directly and LiveKit audio is for a backend service
-        # speak_text(agent_response)
         st.session_state.is_llm_thinking = False
         st.rerun()
-
-# Removed speak_text function as it was a placeholder and Groq doesn't offer TTS
-# For TTS, you'd need another API (e.g., Eleven Labs, Google Cloud Text-to-Speech)
-# and a way to play the audio in the browser.
-# LiveKit's RTC capabilities are for streaming, typically within a dedicated client/server setup.
-# def speak_text(text):
-#     # Fallback to chat display since Groq does not support text-to-speech
-#     add_message_to_chat("Audio output is currently unavailable. Here's my response: " + text, "agent")
 
 def get_llm_response(user_message: str, current_order_state: list, conv_history: list):
     if not GROQ_API_KEY:
         return {"intent": "error", "item_id": None, "quantity": None, "response_text": "I'm sorry, my AI capabilities are not configured. Please contact support. 😔"}
 
-    # Rate limiting: Ensure minimum time between requests (e.g., 2 seconds)
+    # Rate limiting
     current_time = time.time()
     time_since_last = current_time - st.session_state.last_request_time
-    min_interval = 2  # Minimum seconds between requests
+    min_interval = 2
     if time_since_last < min_interval:
         time.sleep(min_interval - time_since_last)
-
-    # Filter out LiveKit specific message if LiveKit is not fully integrated for voice output
-    # And ensure the conversation history sent to LLM is clean.
-    clean_conv_history = [
-        {"role": "user" if chat_turn["role"] == "user" else "assistant", "content": chat_turn["text"]}
-        for chat_turn in conv_history if "Audio output is currently unavailable" not in chat_turn["text"]
-    ]
 
     messages = [{
         "role": "system",
@@ -365,14 +287,14 @@ def get_llm_response(user_message: str, current_order_state: list, conv_history:
         Based on the user's input and the current conversation context, you MUST respond with a JSON object.
         This JSON object should contain:
         1. "intent": A string indicating the user's primary intent.
-            Possible values: "order", "query_menu", "confirm", "cancel", "greeting", "farewell", "other", "thank_you".
+           Possible values: "order", "query_menu", "confirm", "cancel", "greeting", "farewell", "other", "thank_you".
         2. "item_id": The 'id' of the menu item if the intent is "order" or "query_menu", otherwise null.
         3. "quantity": An integer representing the quantity if the intent is "order", otherwise null.
         4. "response_text": A natural language, conversational response for the user, including relevant emojis.
-            Ensure this text is engaging and directly addresses the user's input.
+           Ensure this text is engaging and directly addresses the user's input.
 
         **STRICT JSON OUTPUT REQUIREMENT:**
-        Your entire response MUST be a valid JSON object and contain ONLY the JSON. Do NOT include any other text, markdown, or explanations outside the JSON.
+        Your entire response MUST be a valid JSON object and contain ONLY the JSON.
         Example: {{"intent": "order", "item_id": "beef_burger", "quantity": 1, "response_text": "Great choice! Adding a Classic Beef Burger 🍔 to your order. Would you like some golden fries with that? 🍟"}}
 
         **Recommendation Logic for "response_text":**
@@ -386,29 +308,27 @@ def get_llm_response(user_message: str, current_order_state: list, conv_history:
         """
     }]
     
-    messages.extend(clean_conv_history)
+    for chat_turn in conv_history:
+        role = "user" if chat_turn["role"] == "user" else "assistant"
+        messages.append({"role": role, "content": chat_turn["text"]})
+    
     messages.append({"role": "user", "content": user_message})
 
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     payload = {"model": LLAMA_MODEL, "messages": messages, "temperature": 0.7, "max_tokens": 250, "response_format": {"type": "json_object"}}
 
-    # Exponential backoff for 429 errors
     max_retries = 3
-    base_delay = 1  # Initial delay in seconds
+    base_delay = 1
     for attempt in range(max_retries):
         try:
             response = requests.post(GROQ_API_URL, headers=headers, json=payload)
-            st.session_state.last_request_time = time.time()  # Update last request time
+            st.session_state.last_request_time = time.time()
             response.raise_for_status()
 
-            # Check rate limit headers
             remaining_requests = response.headers.get("x-ratelimit-remaining-requests")
-            remaining_tokens = response.headers.get("x-ratelimit-remaining-tokens")
             if remaining_requests and int(remaining_requests) < 10:
                 st.session_state.rate_limit_warning = True
                 st.warning("Approaching rate limit. Please slow down your requests.")
-            else:
-                st.session_state.rate_limit_warning = False # Reset if above threshold
 
             llm_raw_response_content = response.json()["choices"][0]["message"]["content"]
             llm_parsed_response = json.loads(llm_raw_response_content)
@@ -421,21 +341,9 @@ def get_llm_response(user_message: str, current_order_state: list, conv_history:
                 if not check_availability(item_id):
                     agent_response_text = f"Sorry, {flat_menu.get(item_id, {}).get('name', item_id)} is out of stock. 🛑"
                 elif update_order(item_id, quantity):
-                    # Only suggest item after successful order update and if the item is present in the menu
-                    if item_id in flat_menu:
-                        # Incorporate upsell logic from menu data
-                        upsells = flat_menu[item_id].get("upsell", [])
-                        if upsells:
-                            # Pick one random upsell for simplicity, or iterate for more complex logic
-                            suggested_upsell_id = upsells[0]
-                            if suggested_upsell_id in flat_menu:
-                                agent_response_text += f" How about some {flat_menu[suggested_upsell_id]['name']} with that? 🍟"
-                        
-                        # Use recommendation agent for broader suggestions
-                        suggested_item_from_agent = recommendation_agent.run_task("suggest_item", current_order_state)
-                        if suggested_item_from_agent and suggested_item_from_agent != suggested_upsell_id: # Avoid suggesting the same thing twice
-                            if suggested_item_from_agent in flat_menu:
-                                agent_response_text += f" Also, consider our {flat_menu[suggested_item_from_agent]['name']}! ✨"
+                    suggested_item = recommendation_agent.run_task("suggest_item", current_order_state)
+                    if suggested_item:
+                        agent_response_text += f" How about some {flat_menu[suggested_item]['name']} with that? 🍟"
             elif intent == 'thank_you':
                 agent_response_text = "You're most welcome! Is there anything else I can assist you with? 😊"
             elif intent == 'greeting':
@@ -462,10 +370,8 @@ def get_llm_response(user_message: str, current_order_state: list, conv_history:
             st.error(f"Error with LLM: {e}")
             return {"intent": "error", "item_id": None, "quantity": None, "response_text": "Something went wrong. Please try again. 😕"}
 
-    # Max retries exceeded
     st.error("Max retries exceeded due to rate limits. Please wait a moment and try again.")
     return {"intent": "error", "item_id": None, "quantity": None, "response_text": "I'm sorry, we're experiencing high demand. Please wait a moment and try again. 😔"}
-
 
 # --- Streamlit UI Layout ---
 with st.container():
@@ -475,22 +381,11 @@ with st.container():
         st.markdown('<h3 class="section-subtitle">Voice Ordering Assistant</h3>', unsafe_allow_html=True)
         st.markdown('<p style="font-size: 0.9rem; margin-bottom: 1rem;">Speak your order or upload an audio file</p>', unsafe_allow_html=True)
         
-        # The LiveKit voice session connection initiation
-        # As discussed, direct real-time LiveKit audio streaming in Streamlit is complex.
-        # This button and associated logic for LiveKit are mostly for a "connected" state
-        # but actual bi-directional audio for an agent would typically happen in a separate backend.
-        # For this Streamlit app, we will rely on audio_recorder_streamlit for user input.
-        if st.button("Connect Voice 🎙️"):
-            # This is a placeholder for a LiveKit connection.
-            # In a real scenario for a voice agent, you would likely connect a LiveKit client
-            # to a backend LiveKit Agent service. Streamlit's server doesn't maintain
-            # persistent WebRTC connections for each user session easily.
-            # You might use LiveKit's agents framework on a separate server for full voice AI.
-            st.session_state.voice_session_started = True
-            st.success("Voice session connected! Speak to order! (Using microphone input) 🗣️")
-        
-        # Audio recorder for user input
-        audio_bytes = audio_recorder(text="Start Recording 🎙️", recording_color="#27AE60", neutral_color="#2ECC71", icon_size="2x", key="audio_recorder_start", pause_threshold=3.0, sample_rate=16000) # Changed sample rate to a common STT rate
+        audio_cols = st.columns(2)
+        with audio_cols[0]:
+            audio_bytes = audio_recorder(text="Start Recording 🎙️", recording_color="#27AE60", neutral_color="#2ECC71", icon_size="2x", key="audio_recorder_start", pause_threshold=3.0, sample_rate=44100)
+        with audio_cols[1]:
+            st.markdown('<button style="background: linear-gradient(135deg, #FF8C00, #FF4500); color: white; border-radius: 0.75rem; padding: 0.8rem 1.5rem; border: none; cursor: pointer; width: 100%; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); transition: all 0.3s ease;" onclick="document.getElementById(\'file_uploader\').click()">Upload Audio ⬆️</button>', unsafe_allow_html=True)
 
         uploaded_audio_file = st.file_uploader("Upload an audio file (WAV, MP3, M4A) 🎵", type=["wav", "mp3", "m4a"], key="file_uploader", label_visibility="collapsed")
 
@@ -499,181 +394,159 @@ with st.container():
             st.audio(audio_bytes, format="audio/wav")
             st.markdown("<p style='text-align: center;'>Converting audio to text...🎧</p>", unsafe_allow_html=True)
             try:
-                # Use a specific format if known, otherwise let pydub guess
-                audio_segment = AudioSegment.from_file(io.BytesIO(audio_bytes))
-                wav_file = io.BytesIO()
-                audio_segment.export(wav_file, format="wav")
-                wav_file.seek(0) # Rewind the BytesIO object
-
+                audio_segment = AudioSegment.from_file(io.BytesIO(audio_bytes), format="wav")
+                wav_io = io.BytesIO()
+                audio_segment.export(wav_io, format="wav")
+                wav_io.seek(0)
                 r = sr.Recognizer()
-                with sr.AudioFile(wav_file) as source:
+                with sr.AudioFile(wav_io) as source:
                     audio_data = r.record(source)
-                
                 transcribed_text = r.recognize_google(audio_data)
-                st.success(f"You said: \"{transcribed_text}\"")
+                st.success(f"Transcribed: \"{transcribed_text}\" ✅", icon="✅")
                 process_user_input(transcribed_text)
-            except sr.UnknownValueError:
-                st.warning("Sorry, I could not understand the audio.")
-                add_message_to_chat("Sorry, I could not understand the audio. Could you please repeat that? 🤷‍♀️", "agent")
-            except sr.RequestError as e:
-                st.error(f"Could not request results from Google Speech Recognition service; {e}")
-                add_message_to_chat(f"I'm having trouble with my speech recognition service. Please try again later. Error: {e} 😔", "agent")
             except Exception as e:
-                st.error(f"An error occurred during audio processing: {e}")
-                add_message_to_chat(f"An unexpected error occurred while processing your audio. Please try again. 🚨", "agent")
+                st.error(f"Audio processing error: {e} ⚠️")
             finally:
                 st.session_state.is_processing_audio = False
-                # Remove the temporary WAV file if it was created on disk
-                if os.path.exists("temp_audio_recorded.wav"):
-                    os.remove("temp_audio_recorded.wav")
-                st.rerun() # Rerun to update chat history
+                st.rerun()
 
-        if uploaded_audio_file and not st.session_state.is_processing_audio:
+        if uploaded_audio_file is not None and not st.session_state.is_processing_audio:
             st.session_state.is_processing_audio = True
             st.audio(uploaded_audio_file, format=uploaded_audio_file.type)
-            st.markdown("<p style='text-align: center;'>Converting audio to text...🎧</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center;'>Converting uploaded audio to text...🎧</p>", unsafe_allow_html=True)
             try:
-                # Read the uploaded file directly into AudioSegment
-                audio_segment = AudioSegment.from_file(io.BytesIO(uploaded_audio_file.read()), format=uploaded_audio_file.type.split('/')[-1])
-                wav_file = io.BytesIO()
-                audio_segment.export(wav_file, format="wav")
-                wav_file.seek(0)
-
+                audio_segment = AudioSegment.from_file(uploaded_audio_file)
+                wav_io = io.BytesIO()
+                audio_segment.export(wav_io, format="wav")
+                wav_io.seek(0)
                 r = sr.Recognizer()
-                with sr.AudioFile(wav_file) as source:
+                with sr.AudioFile(wav_io) as source:
                     audio_data = r.record(source)
-                
                 transcribed_text = r.recognize_google(audio_data)
-                st.success(f"You said: \"{transcribed_text}\"")
+                st.success(f"Transcribed: \"{transcribed_text}\" ✅", icon="✅")
                 process_user_input(transcribed_text)
-            except sr.UnknownValueError:
-                st.warning("Sorry, I could not understand the audio.")
-                add_message_to_chat("Sorry, I could not understand the audio. Could you please repeat that? 🤷‍♀️", "agent")
-            except sr.RequestError as e:
-                st.error(f"Could not request results from Google Speech Recognition service; {e}")
-                add_message_to_chat(f"I'm having trouble with my speech recognition service. Please try again later. Error: {e} 😔", "agent")
             except Exception as e:
-                st.error(f"An error occurred during audio processing: {e}")
-                add_message_to_chat(f"An unexpected error occurred while processing your audio. Please try again. 🚨", "agent")
+                st.error(f"Audio processing error: {e} ⚠️")
             finally:
                 st.session_state.is_processing_audio = False
-                st.rerun() # Rerun to update chat history
+                st.rerun()
 
-        st.markdown('<div class="chat-history-container" style="height: 400px; border: 1px solid #ddd; border-radius: 0.75rem; padding: 1rem; background-color: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">', unsafe_allow_html=True)
-        for chat_message in st.session_state.conversation_history:
-            if chat_message["role"] == "user":
-                st.markdown(f'<div class="chat-row user"><div class="chat-bubble user-bubble">{chat_message["text"]}</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="chat-header"><div class="bot-avatar">🤖</div><h3 class="section-subtitle">Agentic Foodie Assistant</h3><span style="background-color: hsl(var(--secondary-hsl)); color: white; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.8rem; margin-left: 10px;">✨ Smart Ordering</span></div>', unsafe_allow_html=True)
+        st.markdown('<div class="chat-history-container">', unsafe_allow_html=True)
+        for chat in st.session_state.conversation_history:
+            if chat["role"] == "user":
+                st.markdown(f'<div class="chat-row user"><div class="chat-bubble user-bubble">{chat["text"]}</div></div>', unsafe_allow_html=True)
             else:
-                st.markdown(f'<div class="chat-row agent"><div class="bot-avatar">🤖</div><div class="chat-bubble agent-bubble">{chat_message["text"]}</div></div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # Placeholder for LLM thinking animation
+                st.markdown(f'<div class="chat-row agent"><div class="bot-avatar">🤖</div><div class="chat-bubble agent-bubble">{chat["text"]}</div></div>', unsafe_allow_html=True)
         if st.session_state.is_llm_thinking:
             st.markdown("""
-                <div class="bouncing-dots">
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                    <div class="dot"></div>
+                <div class="chat-row agent">
+                    <div class="bot-avatar">🤖</div>
+                    <div class="chat-bubble agent-bubble">
+                        <div class="bouncing-dots">
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                        </div>
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
-        
-        # Text input fallback
-        text_input_col, send_button_col = st.columns([4,1])
-        with text_input_col:
-            user_text_input = st.text_input("Type your order or question...", key="text_input_chat")
-        with send_button_col:
-            st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True) # Spacer for alignment
-            if st.button("Send ✉️"):
-                process_user_input(user_text_input)
-                st.session_state.text_input_chat = "" # Clear the input box after sending
-                st.rerun() # Rerun to update chat history
+        st.markdown('</div>', unsafe_allow_html=True)
 
+        user_input = st.chat_input("Type your order or question here... ✍️", on_submit=lambda: process_user_input(st.session_state.chat_input_key), key="chat_input_key")
+        st.markdown('<div class="suggestion-buttons-container">', unsafe_allow_html=True)
+        col_sug1, col_sug2, col_sug3 = st.columns(3)
+        with col_sug1:
+            st.button("Menu? 📋", key="suggest_menu", on_click=process_user_input, args=("What's on the menu?",), use_container_width=True)
+        with col_sug2:
+            st.button("Promotions? 🎉", key="suggest_promo", on_click=process_user_input, args=("Are there any promotions?",), use_container_width=True)
+        with col_sug3:
+            st.button("Recommend! ✨", key="suggest_recommend", on_click=process_user_input, args=("Can you recommend something?",), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     with col2:
-        st.markdown('<div class="menu-section-title"><h2>Our Delicious Menu 🍽️</h2></div>', unsafe_allow_html=True)
-        st.markdown('<p class="menu-section-subtitle">Explore our variety of burgers, pizzas, and more!</p>', unsafe_allow_html=True)
-
+        st.markdown('<div class="menu-section-title"><h2>Our Menu</h2></div>', unsafe_allow_html=True)
+        st.markdown('<p class="menu-section-subtitle">Delicious food, made fresh daily</p>', unsafe_allow_html=True)
         for category, items in menu.items():
             st.markdown(f'<h3 class="menu-item-category">{category.replace("_", " ").title()}</h3>', unsafe_allow_html=True)
             for item in items:
-                col_item, col_add_button = st.columns([3, 1])
-                with col_item:
-                    st.markdown(f"""
-                        <div class="menu-item-card">
-                            <div class="menu-item-header">
-                                <img src="https://via.placeholder.com/80" alt="{item['name']}" class="menu-item-image">
-                                <div class="menu-item-details">
-                                    <div class="menu-item-name">{item['name']}</div>
-                                    <div class="menu-item-description">{item['description']}</div>
-                                    <div class="dietary-badges">
-                                        {''.join(f'<span class="dietary-badge dietary-{d}">{d.capitalize()}</span>' for d in item.get('dietary', []))}
-                                    </div>
-                                </div>
-                                <div class="menu-item-price">${item['price']:.2f}</div>
+                dietary_badges = ""
+                if item.get("dietary"):
+                    for diet in item["dietary"]:
+                        if diet == "vegetarian":
+                            dietary_badges += '<span class="dietary-badge dietary-vegetarian">🌱 Veg</span>'
+                        elif diet == "vegan":
+                            dietary_badges += '<span class="dietary-badge dietary-vegan">🌿 Vegan</span>'
+                        elif diet == "spicy":
+                            dietary_badges += '<span class="dietary-badge dietary-spicy">🌶️ Spicy</span>'
+                st.markdown(f"""
+                    <div class="menu-item-card">
+                        <div class="menu-item-header">
+                            <img src="{item.get('image', 'https://placehold.co/100x100/CCCCCC/333333?text=Food')}" class="menu-item-image" alt="{item['name']}">
+                            <div class="menu-item-details">
+                                <p class="menu-item-name">{item['name']}</p>
+                                <p class="menu-item-description">{item['description']}</p>
+                                <div>{dietary_badges}</div>
                             </div>
+                            <span class="menu-item-price">${item['price']:.2f}</span>
                         </div>
-                    """, unsafe_allow_html=True)
-                with col_add_button:
-                    st.button("Add to Order", key=f"add_{item['id']}", on_click=add_item_to_order_from_button, args=(item['id'],))
+                    </div>
+                """, unsafe_allow_html=True)
+                st.button("➕ Add to Order", key=f"add_to_order_{item['id']}", on_click=add_item_to_order_from_button, args=(item['id'],), help=f"Add {item['name']} to your order", use_container_width=True)
+                st.markdown("<br>", unsafe_allow_html=True)
 
     with col3:
-        st.markdown('<div class="order-summary-title"><h2>Your Order 🛒</h2></div>', unsafe_allow_html=True)
-
+        st.markdown('<div class="order-summary-title"><h2>Your Order</h2></div>', unsafe_allow_html=True)
         if not st.session_state.current_order:
             st.markdown("""
                 <div class="empty-cart-message">
-                    <div class="empty-cart-icon">🛒</div>
-                    Your cart is empty! Start adding some delicious items.
+                    <p class="empty-cart-icon">🛒</p>
+                    <p>Your cart is empty. Add some delicious items! 😋</p>
                 </div>
             """, unsafe_allow_html=True)
         else:
-            for item in st.session_state.current_order:
+            for i, item in enumerate(st.session_state.current_order):
                 st.markdown(f"""
                     <div class="order-item-row">
                         <div class="order-item-name">{item['name']}</div>
                         <div class="qty-controls">
-                            <span class="qty-button">
-                                <button onclick="window.parent.postMessage({{streamlit: {{command: 'SET_WIDGET_VALUE', id: '{st.session_state.get(f'qty_decrease_{item["id"]}', '')}', value: null}}}}, '*')" style="background: none; border: 1px solid #ccc; color: #333; width: 30px; height: 30px; border-radius: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; padding: 0;" >-</button>
-                            </span>
-                            <span class="qty-display">{item['quantity']}</span>
-                            <span class="qty-button">
-                                <button onclick="window.parent.postMessage({{streamlit: {{command: 'SET_WIDGET_VALUE', id: '{st.session_state.get(f'qty_increase_{item["id"]}', '')}', value: null}}}}, '*')" style="background: none; border: 1px solid #ccc; color: #333; width: 30px; height: 30px; border-radius: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; padding: 0;" >+</button>
-                            </span>
+                            <div class="qty-button">{st.button("−", key=f"minus_qty_{item['id']}_{i}", on_click=set_order_item_quantity, args=(item['id'], item['quantity'] - 1), help="Decrease quantity")}</div>
+                            <div class="qty-display">{item['quantity']}</div>
+                            <div class="qty-button">{st.button("+", key=f"plus_qty_{item['id']}_{i}", on_click=set_order_item_quantity, args=(item['id'], item['quantity'] + 1), help="Increase quantity")}</div>
                         </div>
                         <div class="order-item-price">${(item['price'] * item['quantity']):.2f}</div>
-                        <span class="remove-button">
-                            <button onclick="window.parent.postMessage({{streamlit: {{command: 'SET_WIDGET_VALUE', id: '{st.session_state.get(f'remove_{item["id"]}', '')}', value: null}}}}, '*')" style="background: none; border: none; color: red; font-size: 1.2rem; cursor: pointer;" >🗑️</button>
-                        </span>
+                        <div class="remove-button">{st.button("🗑️", key=f"remove_item_{item['id']}_{i}", on_click=remove_order_item, args=(item['id'],), help=f"Remove {item['name']}", use_container_width=False)}</div>
                     </div>
                 """, unsafe_allow_html=True)
 
-                # Streamlit's on_click for quantity buttons
-                st.button("-", key=f"qty_decrease_{item['id']}", on_click=set_order_item_quantity, args=(item['id'], item['quantity'] - 1), help="Decrease quantity", use_container_width=False)
-                st.button("+", key=f"qty_increase_{item['id']}", on_click=set_order_item_quantity, args=(item['id'], item['quantity'] + 1), help="Increase quantity", use_container_width=False)
-                st.button("🗑️", key=f"remove_{item['id']}", on_click=remove_order_item, args=(item['id'],), help="Remove item", use_container_width=False)
+        st.markdown('<div class="order-summary-totals">', unsafe_allow_html=True)
+        subtotal = get_order_total()
+        tax_rate = 0.08
+        tax = subtotal * tax_rate
+        grand_total = subtotal + tax
 
-            total = get_order_total()
-            st.markdown(f"""
-                <div class="order-summary-totals">
-                    <div class="total-row grand-total">
-                        <span>Total:</span>
-                        <span>${total:.2f}</span>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown('<div class="place-order-button">', unsafe_allow_html=True)
-            if st.button("Place Order 🚀"):
-                st.success(f"Order placed for a total of ${total:.2f}! Enjoy your meal! 🎉")
-                st.session_state.current_order = []
-                st.session_state.conversation_history = [] # Reset conversation too
-                initial_agent_message = "Hello! 👋 Welcome to Agentic Foodie! I'm your voice-powered assistant ready to help you order from our delicious menu 🍽️ and suggest great additions. How can I help you today? 🗣️"
-                st.session_state.conversation_history.append({"role": "agent", "text": initial_agent_message})
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(f"""
+            <div class="total-row">
+                <span>Subtotal:</span>
+                <span>${subtotal:.2f}</span>
+            </div>
+            <div class="total-row">
+                <span>Tax (8%):</span>
+                <span>${tax:.2f}</span>
+            </div>
+            <div class="total-row grand-total">
+                <span>Total:</span>
+                <span>${grand_total:.2f}</span>
+            </div>
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-# Important: Clean up temporary audio files if they exist on reruns
-# This is crucial for Streamlit Cloud to avoid disk space issues over time.
-# However, `os.remove` can't be called if the file is still in use by another thread/process.
-# It's generally better to use BytesIO directly without saving to disk if possible.
-# In this revised code, `io.BytesIO` is primarily used. The `os.remove` is kept as a safeguard.
+        st.button("Place Order 🎉", type="primary", disabled=not st.session_state.current_order, key="place_order_btn", use_container_width=True)
+        if st.session_state.place_order_btn:
+            final_order_str = ", ".join([f"{item['quantity']} x {item['name']}" for item in st.session_state.current_order])
+            total = grand_total
+            confirmation_message = f"Thank you for your order! You've ordered: {final_order_str}. Your total is ${total:.2f}. Your order has been sent to the kitchen. Enjoy your meal! 🥳"
+            st.toast(confirmation_message, icon="✅")
+            add_message_to_chat(confirmation_message, "agent")
+            st.session_state.current_order = []
+            st.rerun()
