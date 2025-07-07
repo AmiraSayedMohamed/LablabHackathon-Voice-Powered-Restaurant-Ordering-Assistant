@@ -1,8 +1,8 @@
-streamlit==1.46.1
+streamlit==1.36.0
+python-dotenv==1.0.1
 requests==2.32.3
-python-dotenv==1.1.0
-speechrecognition==3.14.3
+speechrecognition==3.10.0
 pydub==0.25.1
-audio-recorder-streamlit==0.0.10
-livekit-api==1.0.3
-livekit==1.0.11
+audio-recorder-streamlit==0.0.11
+livekit-api==0.8.0
+livekit-rtc==0.11.0
